@@ -9,8 +9,11 @@ import (
 	"encoding/xml"
 	"io/ioutil"
 	"net/http"
+	"regexp"
+	"strings"
 
 	"gopkg.in/inconshreveable/log15.v2"
+	"log"
 )
 
 var Log = log15.New()
@@ -19,10 +22,17 @@ func init() {
 	Log.SetHandler(log15.DiscardHandler())
 }
 
-type SoapEnvelope struct {
-	XMLName xml.Name `xml:"http://schemas.xmlsoap.org/soap/envelope/ Envelope"`
-	//Header SoapHeader `xml:"http://schemas.xmlsoap.org/soap/envelope/ Header,omitempty"`
-	Body SoapBody `xml:"http://schemas.xmlsoap.org/soap/envelope/ Body"`
+type SoapRequestEnvelope struct {
+	XMLName xml.Name   `xml:"http://clients.mindbodyonline.com/api/0_5 soapenv:Envelope"`
+	Header  SoapHeader `xml:"soapenv:Header,omitempty"`
+	Body    SoapBody   `xml:"soapenv:Body"`
+	NSHack  string     `xml:"xmlns:soapenv,attr"`
+}
+
+type SoapResponseEnvelope struct {
+	XMLName xml.Name   `xml:"Envelope"`
+	Header  SoapHeader `xml:"Header,omitempty"`
+	Body    SoapBody   `xml:"Body"`
 }
 
 type SoapHeader struct {
@@ -58,32 +68,38 @@ func NewSoapClient(url string, tls bool) *SoapClient {
 }
 
 func (s *SoapClient) Call(soapAction string, request, response interface{}) error {
-	envelope := SoapEnvelope{
-	//Header:        SoapHeader{},
+	envelope := SoapRequestEnvelope{
+		NSHack: "http://schemas.xmlsoap.org/soap/envelope/",
+		//Header:        SoapHeader{},
 	}
 
 	if request != nil {
-		reqXml, err := xml.Marshal(request)
+		reqXml, err := xml.MarshalIndent(request, "      ", "    ")
 		if err != nil {
 			return err
 		}
 
-		envelope.Body.Content = string(reqXml)
+		envelope.Body.Content = "\n" + string(reqXml) + "\n"
 	}
+
 	buffer := &bytes.Buffer{}
 
 	encoder := xml.NewEncoder(buffer)
-	//encoder.Indent("  ", "    ")
+	encoder.Indent("", "    ")
 
 	err := encoder.Encode(envelope)
 	if err == nil {
 		err = encoder.Flush()
 	}
+	str := buffer.String()
+	str = strings.Replace(str, "<soapenv:Header></soapenv:Header>", "<soapenv:Header/>", -1)
+	buffer.Reset()
+	buffer.WriteString(str)
+	log.Println(buffer.String())
 	Log.Debug("request", "envelope", log15.Lazy{func() string { return buffer.String() }})
 	if err != nil {
 		return err
 	}
-
 	req, err := http.NewRequest("POST", s.url, buffer)
 	req.Header.Add("Content-Type", "text/xml; charset=\"utf-8\"")
 	if soapAction != "" {
@@ -112,7 +128,7 @@ func (s *SoapClient) Call(soapAction string, request, response interface{}) erro
 		return nil
 	}
 
-	respEnvelope := &SoapEnvelope{}
+	respEnvelope := &SoapResponseEnvelope{}
 
 	err = xml.Unmarshal(rawbody, respEnvelope)
 	if err != nil {
@@ -130,6 +146,9 @@ func (s *SoapClient) Call(soapAction string, request, response interface{}) erro
 	if fault != nil {
 		return fault
 	}
+	body = removeNilElements(body)
+
+	//	fmt.Printf("Raw response: %s\n", body)
 
 	err = xml.Unmarshal([]byte(body), response)
 	if err != nil {
@@ -137,4 +156,9 @@ func (s *SoapClient) Call(soapAction string, request, response interface{}) erro
 	}
 
 	return nil
+}
+
+func removeNilElements(body string) string {
+	re := regexp.MustCompile(`<\w+ xsi:nil="true" />`)
+	return re.ReplaceAllString(body, "")
 }
