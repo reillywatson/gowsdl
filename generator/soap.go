@@ -68,9 +68,17 @@ func NewSoapClient(url string, tls bool) *SoapClient {
 }
 
 func (s *SoapClient) Call(soapAction string, request, response interface{}) error {
+	return s.CallWithHeader(soapAction, nil, request, response)
+}
+
+func (s *SoapClient) CallWithHeader(soapAction string, requestHeader, request, response interface{}) error {
 	envelope := SoapRequestEnvelope{
 		NSHack: "http://schemas.xmlsoap.org/soap/envelope/",
 		//Header:        SoapHeader{},
+	}
+
+	if requestHeader != nil {
+		envelope.Header.Header = requestHeader
 	}
 
 	if request != nil {
