@@ -11,7 +11,7 @@ import (
 	"os"
 	"runtime"
 
-	gen "github.com/hooklift/gowsdl/generator"
+	gen "github.com/reillywatson/gowsdl/generator"
 	flags "github.com/jessevdk/go-flags"
 )
 

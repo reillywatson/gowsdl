@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	gowsdl "github.com/hooklift/gowsdl/generator"
+	gowsdl "github.com/reillywatson/gowsdl/generator"
 	"gopkg.in/inconshreveable/log15.v2"
 )
 
